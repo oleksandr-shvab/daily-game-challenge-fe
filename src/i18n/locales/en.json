@@ -108,6 +108,14 @@
     "share_failed": "Couldn't copy. Select the text below and copy it.",
     "share_text_label": "Result text",
     "share_title": "{{app}}: {{game}} #{{number}}",
+    "sources": {
+      "button": "Sources",
+      "heading": "Where these clues come from",
+      "clue": "Clue {{n}}",
+      "via_igdb": "Images via <igdb>IGDB</igdb>",
+      "not_recorded": "Source not recorded",
+      "link_label": "Source of clue {{n}}: {{host}}, opens in a new tab"
+    },
     "play_previous": "Play previous days",
     "countdown": "Next puzzle in {{time}}",
     "countdown_done": "A new puzzle is ready",

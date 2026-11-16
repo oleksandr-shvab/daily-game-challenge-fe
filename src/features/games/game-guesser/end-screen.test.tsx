@@ -2,10 +2,21 @@
 import '@/test/dom-setup'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { GameGuesserView, GuessRead } from '@/api/generated/models'
+import type {
+  GameGuesserView,
+  GuessRead,
+  StepRead,
+} from '@/api/generated/models'
 import i18n from '@/i18n'
 import {
   gameView,
@@ -499,5 +510,152 @@ describe('the clock under the end screen (AC-102, AC-105)', () => {
     await waitFor(() =>
       expect(timer.textContent).toMatch(/^Next puzzle in 13:59:5\d$/),
     )
+  })
+})
+
+describe('the Sources section (AC-63, AC-64, AC-66 to AC-69)', () => {
+  const SOON = '2099-01-01T00:00:00Z'
+  const GONE = '2000-01-01T00:00:00Z'
+
+  function step(
+    n: number,
+    sourceUrl: string | null,
+    media: Partial<StepRead['media']> = {},
+  ): StepRead {
+    return {
+      step: n,
+      hint: null,
+      source_url: sourceUrl,
+      media: {
+        type: 'image',
+        width: 640,
+        height: 360,
+        expires_at: SOON,
+        poster: null,
+        sources: [{ content_type: 'image/webp', url: `/media/${n}.webp` }],
+        ...media,
+      },
+    }
+  }
+
+  it('is not offered during play, and after a loss lists the six steps in order with safe links, and text where a picture has expired', async () => {
+    const user = userEvent.setup()
+    let app = renderApp(`/games/game-guesser/${DAY}`)
+    app.backend.replies.set(`${PUZZLES}/${DAY}`, {
+      status: 200,
+      data: gameView({
+        date: DAY,
+        signed_in: false,
+        steps: [step(1, 'https://www.igdb.com/games/a')],
+      }),
+    })
+    await screen.findByRole('button', { name: 'Skip' })
+    expect(screen.queryByRole('button', { name: 'Sources' })).toBeNull()
+    closeApp(app)
+
+    // The steps come out of order, and a clip shows its still.
+    app = renderApp(`/games/game-guesser/${DAY}`)
+    app.backend.replies.set(`${PUZZLES}/${DAY}`, {
+      status: 200,
+      data: {
+        ...lostView,
+        steps: [
+          step(2, 'https://igdb.com/games/b'),
+          step(1, 'https://www.igdb.com/games/a'),
+          step(3, 'https://www.igdb.com/games/c', { expires_at: GONE }),
+          step(5, 'https://www.igdb.com/games/e'),
+          step(4, 'https://www.igdb.com/games/d', {
+            type: 'video',
+            sources: [{ content_type: 'video/mp4', url: '/media/4.mp4' }],
+            poster: {
+              content_type: 'image/webp',
+              url: '/media/4-poster.webp',
+              expires_at: SOON,
+            },
+          }),
+          step(6, null),
+        ],
+      },
+    })
+    const button = await screen.findByRole('button', { name: 'Sources' })
+    expect(button.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('link', { name: /Source of clue/ })).toBeNull()
+
+    for (let i = 0; i < 40 && document.activeElement !== button; i++) {
+      await user.tab()
+    }
+    expect(document.activeElement).toBe(button)
+    await user.keyboard('{Enter}')
+    expect(button.getAttribute('aria-expanded')).toBe('true')
+
+    const region = screen.getByRole('region', {
+      name: 'Where these clues come from',
+    })
+    expect(button.getAttribute('aria-controls')).toBe(region.id)
+    const rows = within(region).getAllByRole('listitem')
+    // A row with no picture shows its text in the box as well as beside it.
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'Clue 1igdb.com',
+      'Clue 2igdb.com',
+      'Clue 3Clue 3igdb.com',
+      'Clue 4igdb.com',
+      'Clue 5igdb.com',
+      'Clue 6Source not recorded',
+    ])
+    const pictures = within(region).getAllByRole('img')
+    expect(pictures.map((img) => img.getAttribute('alt'))).toEqual([
+      'Clue 1',
+      'Clue 2',
+      'Clue 4',
+      'Clue 5',
+      'Clue 6',
+    ])
+    expect(pictures[2].getAttribute('src')).toBe('/media/4-poster.webp')
+    // A picture that fails to load turns into the same text.
+    fireEvent.error(pictures[3])
+    expect(rows[4].textContent).toBe('Clue 5Clue 5igdb.com')
+
+    const links = within(region).getAllByRole('link')
+    expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Source of clue 1: igdb.com, opens in a new tab',
+      'Source of clue 2: igdb.com, opens in a new tab',
+      'Source of clue 3: igdb.com, opens in a new tab',
+      'Source of clue 4: igdb.com, opens in a new tab',
+      'Source of clue 5: igdb.com, opens in a new tab',
+    ])
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      'https://www.igdb.com/games/a',
+      'https://igdb.com/games/b',
+      'https://www.igdb.com/games/c',
+      'https://www.igdb.com/games/d',
+      'https://www.igdb.com/games/e',
+    ])
+    for (const link of links) {
+      expect(link.getAttribute('target')).toBe('_blank')
+      expect(link.getAttribute('rel')).toContain('noreferrer')
+      expect(link.getAttribute('referrerpolicy')).toBe('no-referrer')
+    }
+    // One source is missing, so the credit to IGDB is not claimed.
+    expect(screen.queryByText(/Images via/)).toBeNull()
+    closeApp(app)
+
+    // With all six on igdb.com the credit shows, and it links out the same safe way.
+    app = renderApp(`/games/game-guesser/${DAY}`)
+    app.backend.replies.set(`${PUZZLES}/${DAY}`, {
+      status: 200,
+      data: {
+        ...lostView,
+        steps: [1, 2, 3, 4, 5, 6].map((n) =>
+          step(n, `https://www.igdb.com/games/${n}`),
+        ),
+      },
+    })
+    await user.click(await screen.findByRole('button', { name: 'Sources' }))
+    const credit = screen.getByRole('link', { name: 'IGDB' })
+    expect(credit.parentElement?.textContent).toBe('Images via IGDB')
+    expect(credit.getAttribute('href')).toBe('https://www.igdb.com')
+    expect(credit.getAttribute('target')).toBe('_blank')
+    expect(credit.getAttribute('rel')).toContain('noreferrer')
+    expect(credit.getAttribute('referrerpolicy')).toBe('no-referrer')
   })
 })

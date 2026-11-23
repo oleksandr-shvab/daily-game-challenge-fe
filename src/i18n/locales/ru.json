@@ -24,7 +24,7 @@
     },
     "archive_title": "Архив",
     "archive": {
-      "back_to_today": "К сегодняшней загадке",
+      "today": "Сегодня",
       "list_label": "Прошлые загадки",
       "number": "#{{number}}",
       "loading": "Загружаем архив…",

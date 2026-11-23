@@ -77,7 +77,8 @@ describe('the game pages in the layout (AC-3, AC-47, AC-48)', () => {
     const user = userEvent.setup()
     const app = renderApp('/games/game-guesser/archive', GUEST)
     servePuzzles(app)
-    // A guest's item carries no state and no guess count; the day has no record in this browser.
+    // A guest's item carries no state and no guess count; the day has no record in this browser. Today's row and the
+    // past day both say "Not played".
     app.backend.replies.set('/v1/games/game-guesser/archive', {
       status: 200,
       data: {
@@ -91,14 +92,14 @@ describe('the game pages in the layout (AC-3, AC-47, AC-48)', () => {
     expect((await screen.findByRole('heading', { level: 1 })).textContent).toBe(
       'Archive',
     )
-    expect(await screen.findByText('Not played')).toBeTruthy()
+    expect(await screen.findAllByText('Not played')).toHaveLength(2)
     await waitFor(() =>
       expect(document.title).toBe('Archive | Daily Game Challenge'),
     )
 
     await act(() => i18n.changeLanguage('ru'))
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Архив')
-    expect(screen.getByText('Не сыграно')).toBeTruthy()
+    expect(screen.getAllByText('Не сыграно')).toHaveLength(2)
     await waitFor(() =>
       expect(document.title).toBe('Архив | Daily Game Challenge'),
     )
@@ -111,7 +112,7 @@ describe('the game pages in the layout (AC-3, AC-47, AC-48)', () => {
     expect(document.title).toBe('Game Guesser | Daily Game Challenge')
   })
 
-  it('opens a past puzzle from its archive row without a reload, and the archive leads back to today', async () => {
+  it('opens a past puzzle from its archive row without a reload, and its first row leads back to today', async () => {
     const user = userEvent.setup()
     const app = renderApp('/games/game-guesser/archive', GUEST)
     servePuzzles(app)
@@ -135,9 +136,7 @@ describe('the game pages in the layout (AC-3, AC-47, AC-48)', () => {
       expect(defaultPrevented).toBe(true)
 
       await user.click(screen.getByRole('link', { name: 'Archive' }))
-      await user.click(
-        await screen.findByRole('link', { name: "Back to today's puzzle" }),
-      )
+      await user.click(await screen.findByRole('link', { name: /Today/ }))
       expect(await screen.findByText('#308 · October 28, 2026')).toBeTruthy()
     } finally {
       document.removeEventListener('click', watch)

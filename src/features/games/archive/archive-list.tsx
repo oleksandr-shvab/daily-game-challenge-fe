@@ -1,26 +1,27 @@
 import {
   useInfiniteQuery,
   useIsFetching,
+  useQuery,
   type InfiniteData,
 } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useId, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { InlineError } from '@/components/inline-error'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { meQueryOptions } from '@/features/auth/queries'
 import type { ArchiveList as ArchivePages } from '@/api/generated/models'
 import { ApiError } from '@/lib/api-client'
-import { cn } from '@/lib/utils'
 import { UnknownGame } from '../unknown-game'
 import { useViewer } from '../use-viewer'
+import { todayViewQueryOptions } from '../view-queries'
 import { ArchiveRow } from './archive-row'
 import {
   disagreesWithViewer,
   hasGuestItems,
   needsSessionCheck,
   rowStateOf,
+  todayItemOf,
 } from './archive-state'
 import { archiveQueryOptions } from './queries'
 import { useGuestRecords } from './use-guest-records'
@@ -43,8 +44,8 @@ function isGameGone(error: Error | null): boolean {
   )
 }
 
-// The past puzzles of a game, newest first, 30 at a time (AC-80). The server never lists today and no item has an
-// answer (AC-86).
+// Today's puzzle first, then the past puzzles of a game, newest first, 30 at a time (AC-80). The server never lists
+// today (the row comes from today's view, as the game screen asks for it) and no item has an answer (AC-86).
 export function ArchiveList({ slug }: { slug: string }) {
   const { t } = useTranslation()
   const { viewer, ready } = useViewer()
@@ -64,13 +65,35 @@ export function ArchiveList({ slug }: { slug: string }) {
     [archive.data],
   )
   const count = items.length
-  const records = useGuestRecords(slug, hasGuestItems(items))
+
+  // Today's view is the game screen's own query, so a failure (no puzzle today, a network error) only leaves the row
+  // out: the archive never shows an error for it. Each visit asks again (`opening`), so the row follows the game.
+  const opening = useId()
+  const today = useQuery({
+    ...todayViewQueryOptions({ slug, viewer, opening }, ready),
+    meta: { expectedStatuses: [404] },
+  })
+  const todayView = today.data?.type === 'game_guesser' ? today.data : undefined
+  // After midnight the archive can list the day this view was today: it is a past day now, and listed once.
+  const todayItem =
+    todayView && !items.some((item) => item.date === todayView.date)
+      ? todayItemOf(todayView)
+      : undefined
+
+  // A guest's state, today's too, is the browser's record, which is read even when no past day needs it.
+  const records = useGuestRecords(
+    slug,
+    hasGuestItems(items) || (todayView !== undefined && !todayView.signed_in),
+  )
 
   useEffect(() => {
     const index = owedFocus.current
     if (index === null || count <= index) return
     owedFocus.current = null
-    const links = listRef.current?.querySelectorAll<HTMLAnchorElement>('a')
+    // The index counts past days; today's row, always first, is not one of them.
+    const links = listRef.current?.querySelectorAll<HTMLAnchorElement>(
+      'a:not([data-today])',
+    )
     links?.[index]?.focus()
   }, [count])
 
@@ -107,18 +130,12 @@ export function ArchiveList({ slug }: { slug: string }) {
   const mismatch = disagreesWithViewer(viewer, items)
   const unsure = !mismatch && needsSessionCheck(viewer, items)
   const hidden = mismatch || (unsure && checkingSession)
+  const archiveLoaded = archive.data !== undefined
   const settling = checkingSession || archive.isFetching
 
   return (
     <div className="flex max-w-2xl flex-1 flex-col items-start gap-4">
       <h1 className="text-2xl font-medium">{t('games.archive_title')}</h1>
-      <Link
-        to="/games/$slug"
-        params={{ slug }}
-        className={cn(buttonVariants({ variant: 'outline' }), 'max-md:h-11')}
-      >
-        {t('games.archive.back_to_today')}
-      </Link>
 
       {archive.data === undefined && archive.isError && (
         <ArchiveError
@@ -133,26 +150,48 @@ export function ArchiveList({ slug }: { slug: string }) {
       {mismatch && !settling && (
         <ArchiveError error={null} onRetry={retry} buttonRef={takeOwedFocus} />
       )}
-      {!hidden && archive.data !== undefined && count === 0 && (
-        <p className="text-muted-foreground">{t('games.archive.empty')}</p>
-      )}
-      {!hidden && count > 0 && (
-        <ul
-          ref={listRef}
-          aria-label={t('games.archive.list_label')}
-          className="flex w-full flex-col gap-2"
-        >
-          {items.map((item) => (
-            <li key={item.date}>
-              <ArchiveRow
-                slug={slug}
-                item={item}
-                rowState={rowStateOf(item, records)}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+      {!hidden &&
+        archive.data !== undefined &&
+        count === 0 &&
+        !todayItem &&
+        !today.isLoading && (
+          <p className="text-muted-foreground">{t('games.archive.empty')}</p>
+        )}
+      {!hidden &&
+        (count > 0 || todayItem || (archiveLoaded && today.isLoading)) && (
+          <ul
+            ref={listRef}
+            aria-label={t('games.archive.list_label')}
+            className="flex w-full flex-col gap-2"
+          >
+            {todayItem ? (
+              <li>
+                <ArchiveRow
+                  slug={slug}
+                  item={todayItem}
+                  rowState={rowStateOf(todayItem, records)}
+                  today
+                />
+              </li>
+            ) : (
+              // Holds the place while today's view loads, so the rows do not jump when it arrives.
+              today.isLoading && (
+                <li aria-hidden>
+                  <Skeleton className="h-11 w-full" />
+                </li>
+              )
+            )}
+            {items.map((item) => (
+              <li key={item.date}>
+                <ArchiveRow
+                  slug={slug}
+                  item={item}
+                  rowState={rowStateOf(item, records)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
 
       {/* Rows that are shown stay when the next page fails. */}
       {archive.isFetchNextPageError && (

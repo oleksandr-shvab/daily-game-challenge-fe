@@ -2,13 +2,21 @@
 import '@/test/dom-setup'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ArchiveItem, GuessRead } from '@/api/generated/models'
 import i18n from '@/i18n'
 import {
   GUEST,
+  gameView,
   SERVER_ERROR,
   SIGNED_IN,
   slowReply,
@@ -32,6 +40,7 @@ vi.mock('./use-guest-records', async (importOriginal) => {
 
 const SLUG = 'game-guesser'
 const ARCHIVE_URL = `/v1/games/${SLUG}/archive`
+const TODAY_URL = `/v1/games/${SLUG}/puzzles/today`
 
 let stop: (() => void) | undefined
 
@@ -579,9 +588,209 @@ describe('an archive with no past puzzles (AC-80)', () => {
     expect(await screen.findByText('No past puzzles yet')).toBeTruthy()
     expect(screen.queryByRole('list', { name: 'Past puzzles' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull()
+    // The replacement of the old "Back to today's puzzle" button is the today row, and there is none here.
+    expect(screen.queryByRole('link', { name: /Today/ })).toBeNull()
+  })
+})
+
+// Today's puzzle is the first row of the list (decision 76). The server never lists it: the row is the game screen's
+// own today view.
+const TODAY = '2026-11-05'
+const noPuzzleToday: Reply = {
+  status: 404,
+  data: { status: 404, code: 'puzzle_not_found', request_id: 'req-404' },
+}
+
+describe("today's row", () => {
+  function setToday(app: ReturnType<typeof renderArchive>, reply: Reply) {
+    app.backend.replies.set(TODAY_URL, reply)
+  }
+
+  function renderWithToday(
+    reply: Reply,
+    today: Reply,
+    me: Reply = GUEST,
+  ): ReturnType<typeof renderArchive> {
+    const app = startApp({ path: `/games/${SLUG}/archive`, me })
+    stop = app.stop
+    app.backend.replies.set(ARCHIVE_URL, reply)
+    setToday(app, today)
+    render(
+      <QueryClientProvider client={app.queryClient}>
+        <RouterProvider router={app.router} />
+      </QueryClientProvider>,
+    )
+    return app
+  }
+
+  const past = {
+    status: 200,
+    data: { items: [guestItem('2026-11-04', 307)], next_before: null },
+  }
+
+  it("comes first, with its label and a link to the today route, and takes a guest's state from the browser record", async () => {
+    // The view says nothing was played; the browser's record is the truth for a guest.
+    record(TODAY, 'in_progress', [guess(1, 'wrong'), guess(2, 'wrong')])
+    renderWithToday(past, { status: 200, data: gameView({ signed_in: false }) })
+
+    const rows = within(
+      await screen.findByRole('list', { name: 'Past puzzles' }),
+    ).getAllByRole('listitem')
+    expect(rows).toHaveLength(2)
+    const link = within(rows[0]).getByRole('link')
+    expect(link.getAttribute('href')).toBe(`/games/${SLUG}`)
+    expect(link.getAttribute('aria-label')).toBe(
+      '#308, Today, November 5, 2026, In progress',
+    )
+    expect(link.textContent).toContain('Today')
+    expect(within(rows[0]).getByRole('img').getAttribute('aria-label')).toBe(
+      'In progress',
+    )
+    expect(within(rows[1]).getByRole('link').getAttribute('href')).toBe(
+      `/games/${SLUG}/2026-11-04`,
+    )
+    expect(within(rows[1]).queryByText('Today')).toBeNull()
+
+    await act(() => i18n.changeLanguage('ru'))
+    expect(within(rows[0]).getByRole('link').getAttribute('aria-label')).toBe(
+      '#308, Сегодня, 5 ноября 2026 г., В процессе',
+    )
+  })
+
+  it('is the only row, and the "no past puzzles" text stays away, when there are no past days; a guest record is read all the same', async () => {
+    record(TODAY, 'won', [guess(1, 'wrong'), guess(2, 'correct')])
+    renderWithToday(
+      { status: 200, data: { items: [], next_before: null } },
+      { status: 200, data: gameView({ signed_in: false }) },
+    )
+
+    const link = await screen.findByRole('link', { name: /Today/ })
+    expect(link.textContent).toContain('Solved in 2')
+    expect(screen.queryByText('No past puzzles yet')).toBeNull()
+    const list = screen.getByRole('list', { name: 'Past puzzles' })
+    expect(within(list).getAllByRole('link')).toHaveLength(1)
+  })
+
+  it("takes an account's state from the view: an untouched game is not played", async () => {
+    const app = renderWithToday(
+      past,
+      {
+        status: 200,
+        data: gameView({ signed_in: true, status: 'in_progress' }),
+      },
+      SIGNED_IN,
+    )
+    app.backend.replies.set(ARCHIVE_URL, {
+      status: 200,
+      data: {
+        items: [
+          { date: '2026-11-04', number: 307, state: 'lost', guesses_used: 6 },
+        ],
+        next_before: null,
+      },
+    })
+
+    const link = await screen.findByRole('link', { name: /Today/ })
+    expect(link.getAttribute('aria-label')).toBe(
+      '#308, Today, November 5, 2026, Not played',
+    )
+
+    // Played: the next visit asks again and shows the win.
+    cleanup()
+    app.backend.replies.set(TODAY_URL, {
+      status: 200,
+      data: gameView({
+        signed_in: true,
+        status: 'won',
+        guesses_used: 3,
+      }),
+    })
+    render(
+      <QueryClientProvider client={app.queryClient}>
+        <RouterProvider router={app.router} />
+      </QueryClientProvider>,
+    )
     expect(
-      screen.getByRole('link', { name: "Back to today's puzzle" }),
-    ).toBeTruthy()
+      (await screen.findByRole('link', { name: /Today/ })).getAttribute(
+        'aria-label',
+      ),
+    ).toBe('#308, Today, November 5, 2026, Solved in 3')
+  })
+
+  it.each([
+    ['no puzzle today', noPuzzleToday],
+    ['a failed call', SERVER_ERROR],
+  ])(
+    'is left out with %s, and the archive works with no error',
+    async (_name, today) => {
+      renderWithToday(past, today)
+
+      const rows = within(
+        await screen.findByRole('list', { name: 'Past puzzles' }),
+      ).getAllByRole('listitem')
+      expect(rows).toHaveLength(1)
+      await waitFor(() => expect(screen.queryByText('Today')).toBeNull())
+      expect(screen.queryByRole('alert')).toBeNull()
+    },
+  )
+
+  it('is not listed twice when the archive lists the day it was for', async () => {
+    // The clock rolled over: the view is of a day that is now a past one.
+    renderWithToday(
+      {
+        status: 200,
+        data: {
+          items: [guestItem(TODAY, 308), guestItem('2026-11-04', 307)],
+          next_before: null,
+        },
+      },
+      { status: 200, data: gameView({ signed_in: false }) },
+    )
+
+    const list = await screen.findByRole('list', { name: 'Past puzzles' })
+    await waitFor(() =>
+      expect(within(list).getAllByRole('link')).toHaveLength(2),
+    )
+    expect(screen.queryByText('Today')).toBeNull()
+    expect(
+      within(list)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('href')),
+    ).toEqual([`/games/${SLUG}/${TODAY}`, `/games/${SLUG}/2026-11-04`])
+  })
+
+  it('does not take the focus from the first new row of "Show more"', async () => {
+    const user = userEvent.setup()
+    renderWithToday(
+      (config) =>
+        config.params?.before === '2026-11-02'
+          ? {
+              status: 200,
+              data: {
+                items: [guestItem('2026-11-01', 305)],
+                next_before: null,
+              },
+            }
+          : {
+              status: 200,
+              data: {
+                items: [
+                  guestItem('2026-11-03', 306),
+                  guestItem('2026-11-02', 305 + 1),
+                ],
+                next_before: '2026-11-02',
+              },
+            },
+      { status: 200, data: gameView({ signed_in: false }) },
+    )
+    await screen.findByRole('link', { name: /Today/ })
+
+    await user.click(await screen.findByRole('button', { name: 'Show more' }))
+
+    const newRow = await screen.findByRole('link', {
+      name: /^#305, November 1/,
+    })
+    expect(document.activeElement).toBe(newRow)
   })
 })
 

@@ -24,7 +24,7 @@
     },
     "archive_title": "Archive",
     "archive": {
-      "back_to_today": "Back to today's puzzle",
+      "today": "Today",
       "list_label": "Past puzzles",
       "number": "#{{number}}",
       "loading": "Loading the archive…",

@@ -100,7 +100,10 @@ export function ClueLadder({
               )
             }
           />
-          {step.hint && <Hint hint={step.hint} />}
+          {/* Holds one line even with no hint (step 1), so the guesses below do not move between steps. */}
+          <div data-testid="clue-hint-row" className="min-h-5">
+            {step.hint && <Hint hint={step.hint} />}
+          </div>
         </TabsContent>
       ))}
     </Tabs>

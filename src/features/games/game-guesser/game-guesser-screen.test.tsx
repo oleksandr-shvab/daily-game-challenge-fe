@@ -482,6 +482,23 @@ describe('the clue content (AC-11, AC-19, AC-20)', () => {
     ])
   })
 
+  it('keeps one line for the hint on a step that has none, so the page does not jump', async () => {
+    const app = renderApp(`/games/game-guesser/${DAY}`, GUEST)
+    serve(app, {
+      ...view(2),
+      steps: [
+        { ...step(1), hint: null },
+        { ...step(2), hint: { kind: 'platform', value: 'PC' } },
+      ],
+    })
+
+    await screen.findByRole('tab', { name: 'Step 1' })
+    const [noHint, withHint] = screen.getAllByTestId('clue-hint-row')
+    expect(noHint.childElementCount).toBe(0)
+    expect(noHint.className).toBe(withHint.className)
+    expect(noHint.classList.contains('min-h-5')).toBe(true)
+  })
+
   it('puts an image and a clip in the same frame, whatever the size of the file', async () => {
     fakePlayback()
     const app = renderApp(`/games/game-guesser/${DAY}`, GUEST)

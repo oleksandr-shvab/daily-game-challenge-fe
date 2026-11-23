@@ -1,9 +1,29 @@
-import { useRef, useState } from 'react'
+import { Maximize2, X } from 'lucide-react'
+import { useRef, useState, type MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { MediaRead, PosterRead } from '@/api/generated/models'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import { ClueVideo } from './clue-video'
+
+// One frame for every step, image or video, in every state (loading, failed, loaded), so the page never jumps (decision
+// 77). 16:9; the width is the room there is: the whole content width, at most 64rem, and not so wide that the frame's
+// height pushes the guess box off a laptop screen (24rem is what the rest of the page needs, never narrower than 20rem).
+export const CLUE_FRAME_CLASS =
+  'relative mx-auto aspect-video w-[min(100%,64rem,max(20rem,calc((100dvh_-_24rem)_*_16/9)))] overflow-hidden rounded-lg bg-muted'
+
+// The larger view: the same 16:9 frame at the largest size the viewport holds, without scrolling. The backdrop is the
+// dialog's own overlay, so a click outside the frame closes it.
+const ENLARGED_CLASS =
+  'aspect-video w-[min(calc(100vw_-_2rem),calc((100dvh_-_2rem)_*_16/9))] max-w-none gap-0 overflow-hidden bg-muted p-0 ring-0 sm:max-w-none'
 
 type Link = { url: string; expiresAt: string }
 
@@ -114,7 +134,74 @@ type ClueMediaProps = {
   onRefreshLinks: () => Promise<MediaRead | undefined>
 }
 
-// The box takes its size from the media before the file loads, so the page does not jump (AC-19).
+type SurfaceProps = {
+  shown: Shown
+  alt: string
+  active: boolean
+  loading: boolean
+  onLoaded: () => void
+  onFailure: () => void
+  onRetry: () => void
+}
+
+// What fills a frame: the loading state, the failure with "Try again", or the file. The small frame and the larger view
+// both show it, from the same state, so a refresh of expired links reaches both.
+function ClueSurface({
+  shown,
+  alt,
+  active,
+  loading,
+  onLoaded,
+  onFailure,
+  onRetry,
+}: SurfaceProps) {
+  const { t } = useTranslation()
+  const url = linkOf(shown.media)?.url ?? ''
+
+  return (
+    <>
+      {loading && <Skeleton className="absolute inset-0 rounded-none" />}
+      {shown.status === 'failed' ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center">
+          <p className="text-sm text-muted-foreground">
+            {t('games.clue_failed')}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="max-md:h-11"
+            onClick={onRetry}
+          >
+            {t('games.clue_retry')}
+          </Button>
+        </div>
+      ) : (
+        shown.status !== 'removed' &&
+        url !== '' &&
+        (shown.media.type === 'video' ? (
+          <ClueVideo
+            sources={shown.media.sources}
+            poster={shown.poster?.url}
+            active={active}
+            onLoaded={onLoaded}
+            onFailure={onFailure}
+          />
+        ) : (
+          <img
+            src={url}
+            alt={alt}
+            onLoad={onLoaded}
+            onError={onFailure}
+            className="size-full object-contain"
+          />
+        ))
+      )}
+    </>
+  )
+}
+
+// The frame is the same for every file, so the page does not jump before the file loads (AC-19).
 export function ClueMedia({
   media,
   alt,
@@ -153,6 +240,7 @@ export function ClueMedia({
       })
   }
 
+  const [enlarged, setEnlarged] = useState(false)
   const clipUrl = linkOf(shown.media)?.url ?? ''
 
   // A file that failed, or a clip that stopped, asks for fresh links once (AC-24). A second failure shows the
@@ -195,74 +283,93 @@ export function ClueMedia({
     isVideo && poster?.url === shown.posterLoaded && shown.status !== 'removed'
   const loading =
     shown.status !== 'loaded' && shown.status !== 'failed' && !posterShowing
+  const hasFile =
+    shown.status !== 'failed' && shown.status !== 'removed' && clipUrl !== ''
+
+  // A click on the picture opens the larger view; the buttons inside the frame keep their own meaning. The keyboard
+  // and screen readers have the expand button.
+  function handleFrameClick(event: MouseEvent) {
+    if (!hasFile) return
+    if (event.target instanceof Element && event.target.closest('button')) {
+      return
+    }
+    setEnlarged(true)
+  }
 
   return (
-    <div
-      className="relative mx-auto w-full overflow-hidden rounded-lg bg-muted"
-      style={{
-        aspectRatio: `${media.width} / ${media.height}`,
-        maxWidth: media.width,
-      }}
-    >
-      {loading && <Skeleton className="absolute inset-0 rounded-none" />}
-      {shown.status === 'failed' ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center">
-          <p className="text-sm text-muted-foreground">
-            {t('games.clue_failed')}
-          </p>
+    <Dialog open={enlarged} onOpenChange={setEnlarged}>
+      <div
+        data-slot="clue-frame"
+        className={cn(CLUE_FRAME_CLASS, hasFile && 'cursor-zoom-in')}
+        onClick={handleFrameClick}
+      >
+        <ClueSurface
+          shown={shown}
+          alt={alt}
+          // The larger view plays the clip meanwhile.
+          active={active && !enlarged}
+          loading={loading}
+          onLoaded={handleLoaded}
+          onFailure={handleFailure}
+          onRetry={retry}
+        />
+        {/* A `<video>` says nothing when its poster fails or loads, so the poster is also loaded as an image. */}
+        {hasFile && isVideo && poster && (
+          <img
+            src={poster.url}
+            alt=""
+            hidden
+            onLoad={() =>
+              setShown((now) => ({
+                ...now,
+                posterStatus: 'ok',
+                posterLoaded: poster.url,
+              }))
+            }
+            onError={handlePosterFailure}
+          />
+        )}
+        {hasFile && (
+          <DialogTrigger asChild>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon-sm"
+              aria-label={t('games.clue_enlarge')}
+              className="absolute top-2 right-2 max-md:size-11"
+            >
+              <Maximize2 aria-hidden />
+            </Button>
+          </DialogTrigger>
+        )}
+      </div>
+      <DialogContent aria-describedby={undefined} className={ENLARGED_CLASS}>
+        {/* The first control in the dialog, so it has the focus on open. */}
+        <DialogClose asChild>
           <Button
             type="button"
-            variant="outline"
-            size="sm"
-            className="max-md:h-11"
-            onClick={retry}
+            variant="secondary"
+            size="icon-sm"
+            aria-label={t('games.clue_close')}
+            className="absolute top-2 right-2 z-10 max-md:size-11"
           >
-            {t('games.clue_retry')}
+            <X aria-hidden />
           </Button>
-        </div>
-      ) : (
-        shown.status !== 'removed' &&
-        clipUrl !== '' &&
-        (isVideo ? (
-          <>
-            <ClueVideo
-              sources={shown.media.sources}
-              poster={poster?.url}
-              width={media.width}
-              height={media.height}
-              active={active}
-              onLoaded={handleLoaded}
-              onFailure={handleFailure}
-            />
-            {/* A `<video>` says nothing when its poster fails or loads, so the poster is also loaded as an image. */}
-            {poster && (
-              <img
-                src={poster.url}
-                alt=""
-                hidden
-                onLoad={() =>
-                  setShown((now) => ({
-                    ...now,
-                    posterStatus: 'ok',
-                    posterLoaded: poster.url,
-                  }))
-                }
-                onError={handlePosterFailure}
-              />
-            )}
-          </>
-        ) : (
-          <img
-            src={clipUrl}
+        </DialogClose>
+        {/* The same name as the picture's: it never says what the answer is. */}
+        <DialogTitle className="sr-only">{alt}</DialogTitle>
+        <div className="relative size-full">
+          <ClueSurface
+            shown={shown}
             alt={alt}
-            width={media.width}
-            height={media.height}
-            onLoad={handleLoaded}
-            onError={handleFailure}
-            className="size-full object-cover"
+            active
+            loading={loading}
+            onLoaded={handleLoaded}
+            onFailure={handleFailure}
+            onRetry={retry}
           />
-        ))
-      )}
-    </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -14,6 +14,7 @@ import { ApiError } from '@/lib/api-client'
 import { getErrorMessage } from '@/lib/error-messages'
 import { cn } from '@/lib/utils'
 import type { useGuess } from '../guess'
+import { useListPlacement } from './list-placement'
 import { useTitleSearch } from './title-queries'
 
 // The input's own limit, the server's (CONTRACTS, "Title search", AC-36).
@@ -39,6 +40,8 @@ export function TitleSearch({ slug, guesses, guess }: TitleSearchProps) {
   const messageId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const [text, setText] = useState('')
   const [picked, setPicked] = useState<TitleRead | null>(null)
@@ -81,6 +84,15 @@ export function TitleSearch({ slug, guesses, guess }: TitleSearchProps) {
   } else if (!showItems) {
     message = t('games.search.empty')
   }
+
+  // The dropdown opens below the box, or above it when the room below is too small (a short screen, a phone's keyboard,
+  // a long guess list above the box), and scrolls inside the room there is.
+  const placement = useListPlacement(
+    open,
+    boxRef,
+    dropdownRef,
+    showItems ? items : message,
+  )
 
   // The list scrolls inside itself: keep the highlighted option in view, also when the list opens or its items change.
   useEffect(() => {
@@ -186,7 +198,7 @@ export function TitleSearch({ slug, guesses, guess }: TitleSearchProps) {
 
   return (
     <form onSubmit={onSubmit} className="flex items-start gap-2">
-      <div className="relative min-w-0 flex-1">
+      <div ref={boxRef} className="relative min-w-0 flex-1">
         <Input
           ref={inputRef}
           role="combobox"
@@ -218,8 +230,13 @@ export function TitleSearch({ slug, guesses, guess }: TitleSearchProps) {
         {/* A press on the list must not take the focus from the input, or its blur would close the list first. */}
         {open && (
           <div
+            ref={dropdownRef}
+            data-side={placement.side}
             onMouseDown={(event) => event.preventDefault()}
-            className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-md"
+            className={cn(
+              'absolute inset-x-0 z-20 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-md',
+              placement.side === 'below' ? 'top-full mt-1' : 'bottom-full mb-1',
+            )}
           >
             {showItems ? (
               <ul
@@ -227,7 +244,8 @@ export function TitleSearch({ slug, guesses, guess }: TitleSearchProps) {
                 id={listId}
                 role="listbox"
                 aria-label={t('games.search.label')}
-                className="relative max-h-60 overflow-y-auto overscroll-contain"
+                style={{ maxHeight: placement.maxHeight }}
+                className="relative overflow-y-auto overscroll-contain"
               >
                 {options.map((title, index) => {
                   const isTried = tried.has(title.id)

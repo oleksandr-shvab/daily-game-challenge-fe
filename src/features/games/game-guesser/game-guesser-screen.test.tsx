@@ -480,8 +480,117 @@ describe('the clue content (AC-11, AC-19, AC-20)', () => {
       'Clue 3 of 6',
       'Clue 4 of 6',
     ])
-    expect(images[0].getAttribute('width')).toBe('640')
-    expect(images[0].getAttribute('height')).toBe('480')
+  })
+
+  it('puts an image and a clip in the same frame, whatever the size of the file', async () => {
+    fakePlayback()
+    const app = renderApp(`/games/game-guesser/${DAY}`, GUEST)
+    const tall = step(1)
+    // A 4:3 screenshot and a 16:9 clip: the frame comes from the page, never from the file (decision 77).
+    serve(app, { ...view(2), steps: [tall, clip(2)] })
+
+    await screen.findByRole('tab', { name: 'Step 2' })
+    const frames = Array.from(
+      document.querySelectorAll('[data-slot="clue-frame"]'),
+    )
+    expect(frames).toHaveLength(2)
+    expect(frames[0].className).toContain('aspect-video')
+    expect(frames[1].className).toBe(frames[0].className)
+    expect(frames.map((frame) => frame.hasAttribute('style'))).toEqual([
+      false,
+      false,
+    ])
+  })
+})
+
+describe('the larger view of a clue (decision 77)', () => {
+  const finished = (steps: StepRead[]) =>
+    gameView({
+      date: DAY,
+      signed_in: false,
+      status: 'won',
+      guesses_used: 1,
+      guesses_left: 5,
+      guesses: [{ title_id: 3, name: 'Zelda', result: 'correct' }],
+      steps,
+      answer: { title_id: 3, name: 'Zelda', year: 1998, franchise: null },
+    })
+
+  it('opens from the button and from the picture, closes with Escape, the close button and the backdrop, and gives the focus back', async () => {
+    const user = userEvent.setup()
+    const app = renderApp(`/games/game-guesser/${DAY}`, GUEST)
+    serve(app, view(1))
+
+    const expand = await screen.findByRole('button', { name: 'Enlarge clue' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    await user.click(expand)
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('img').getAttribute('src')).toContain(
+      '/api/v1/media/1.webp',
+    )
+    // The focus moves in, to the close button.
+    expect(document.activeElement).toBe(
+      within(dialog).getByRole('button', { name: 'Close' }),
+    )
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.activeElement).toBe(expand)
+
+    await user.click(screen.getByRole('img', { name: 'Clue 1 of 6' }))
+    await user.click(await screen.findByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.activeElement).toBe(expand)
+
+    await user.click(expand)
+    await screen.findByRole('dialog')
+    await user.click(document.querySelector('[data-slot="dialog-overlay"]')!)
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('never has the answer in a name, also when the game is over', async () => {
+    const user = userEvent.setup()
+    const app = renderApp(`/games/game-guesser/${DAY}`, GUEST)
+    serve(app, finished([1, 2, 3].map((n) => step(n))))
+
+    await screen.findByText('The answer: Zelda (1998)')
+    const expand = screen.getAllByRole('button', { name: /Enlarge clue/ })
+    await user.click(expand[0])
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.getAttribute('aria-labelledby')).not.toBeNull()
+    expect(
+      document.getElementById(dialog.getAttribute('aria-labelledby')!)
+        ?.textContent,
+    ).toBe('Clue 3 of 6')
+    expect(within(dialog).getByRole('img').getAttribute('alt')).toBe(
+      'Clue 3 of 6',
+    )
+    expect(expand[0].getAttribute('aria-label')).toBe('Enlarge clue')
+  })
+
+  it('shows the same muted looping clip, and its failure goes through the refresh of the frame', async () => {
+    const user = userEvent.setup()
+    fakePlayback()
+    const app = renderApp(`/games/game-guesser/${DAY}`, GUEST)
+    serve(app, { ...view(1), steps: [clip(1)] })
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Enlarge clue' }),
+    )
+    const dialog = await screen.findByRole('dialog')
+    const video = dialog.querySelector('video')!
+    expect(video.muted).toBe(true)
+    expect(video.loop).toBe(true)
+    expect(video.querySelectorAll('source')).toHaveLength(2)
+
+    // The clip in the larger view failing is the frame's failure: the same refresh, shown in both.
+    fireEvent.error(video.querySelector('source[type="video/mp4"]')!)
+    fireEvent.error(video.querySelector('source[type="video/mp4"]')!)
+    expect(
+      await within(dialog).findByText("The clue didn't load."),
+    ).toBeTruthy()
   })
 })
 

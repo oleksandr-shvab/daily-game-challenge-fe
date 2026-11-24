@@ -1,5 +1,9 @@
 import type { TFunction } from 'i18next'
-import type { ArchiveItem, ArchiveState } from '@/api/generated/models'
+import type {
+  ArchiveItem,
+  ArchiveState,
+  GameGuesserView,
+} from '@/api/generated/models'
 import {
   readGuestRecords,
   DEFAULT_VARIANT,
@@ -34,6 +38,27 @@ export function rowStateOf(
   return record
     ? { state: record.status, guessesUsed: record.guesses.length }
     : { state: 'not_played', guessesUsed: 0 }
+}
+
+// Today's puzzle in the shape of a past row, so one function (`rowStateOf`) decides its state. An account's view has
+// its own progress; a guest's has none that counts, the browser's record answers (as for a past day). An account's
+// untouched game is "Not played", as the archive's own items say.
+export function todayItemOf(view: GameGuesserView): ArchiveItem {
+  if (!view.signed_in) {
+    return {
+      date: view.date,
+      number: view.number,
+      state: null,
+      guesses_used: null,
+    }
+  }
+  const untouched = view.status === 'in_progress' && view.guesses_used === 0
+  return {
+    date: view.date,
+    number: view.number,
+    state: untouched ? 'not_played' : view.status,
+    guesses_used: view.guesses_used,
+  }
 }
 
 export function stateText(

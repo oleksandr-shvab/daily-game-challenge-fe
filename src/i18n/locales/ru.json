@@ -24,7 +24,7 @@
     },
     "archive_title": "Архив",
     "archive": {
-      "back_to_today": "К сегодняшней загадке",
+      "today": "Сегодня",
       "list_label": "Прошлые загадки",
       "number": "#{{number}}",
       "loading": "Загружаем архив…",
@@ -104,6 +104,8 @@
     "clip_play": "Воспроизвести клип",
     "clip_pause": "Приостановить клип",
     "clue_retry": "Попробовать снова",
+    "clue_enlarge": "Увеличить подсказку",
+    "clue_close": "Закрыть",
     "win": "Угадали!",
     "solved_in_one": "Угадано с {{count}} попытки",
     "solved_in_few": "Угадано с {{count}} попыток",

@@ -24,7 +24,7 @@
     },
     "archive_title": "Archive",
     "archive": {
-      "back_to_today": "Back to today's puzzle",
+      "today": "Today",
       "list_label": "Past puzzles",
       "number": "#{{number}}",
       "loading": "Loading the archive…",
@@ -98,6 +98,8 @@
     "clip_play": "Play clip",
     "clip_pause": "Pause clip",
     "clue_retry": "Try again",
+    "clue_enlarge": "Enlarge clue",
+    "clue_close": "Close",
     "win": "You got it!",
     "solved_in_one": "Solved in {{count}} guess",
     "solved_in_other": "Solved in {{count}} guesses",

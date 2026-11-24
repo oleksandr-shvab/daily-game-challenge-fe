@@ -16,8 +16,6 @@ type ClueVideoProps = {
   // In the order given: the browser takes the first one it can play (AC-21).
   sources: MediaSourceRead[]
   poster: string | undefined
-  width: number
-  height: number
   // Whether the clip's step is the one shown: a clip on another step pauses.
   active: boolean
   // The first frame is ready: the loading state can end.
@@ -30,8 +28,6 @@ type ClueVideoProps = {
 export function ClueVideo({
   sources,
   poster,
-  width,
-  height,
   active,
   onLoaded,
   onFailure,
@@ -108,8 +104,6 @@ export function ClueVideo({
         playsInline
         preload="metadata"
         poster={poster}
-        width={width}
-        height={height}
         onLoadedData={onLoaded}
         onPlay={() => {
           hasPlayed.current = true
@@ -119,7 +113,7 @@ export function ClueVideo({
         onError={(event) => {
           if (event.target === event.currentTarget) fail()
         }}
-        className="relative size-full object-cover"
+        className="relative size-full object-contain"
       >
         {sources.map((source, index) => (
           <source

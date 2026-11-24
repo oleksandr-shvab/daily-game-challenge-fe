@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GameGuesserView, TitleRead } from '@/api/generated/models'
 import i18n from '@/i18n'
 import { gameView, GUEST, slowReply, startApp } from '@/test/router-harness'
+import { MAX_LIST_HEIGHT, placeList } from './list-placement'
 
 const DAY = '2026-11-05'
 const VIEW_URL = `/v1/games/game-guesser/puzzles/${DAY}`
@@ -114,6 +115,51 @@ describe('the title search (AC-26, AC-27)', () => {
     // The answer for "do" came last and belongs to older text.
     expect(screen.queryByRole('option', { name: /Do Only/ })).toBeNull()
     expect(screen.getAllByRole('option')).toHaveLength(1)
+  })
+})
+
+describe('where the list opens (decision 77)', () => {
+  it('opens below when it fits there or nowhere has more room, else above, and never taller than the room', () => {
+    expect(placeList(500, 100, 240)).toEqual({
+      side: 'below',
+      maxHeight: MAX_LIST_HEIGHT,
+    })
+    expect(placeList(120, 400, 240)).toEqual({ side: 'above', maxHeight: 240 })
+    expect(placeList(120, 90, 240)).toEqual({ side: 'below', maxHeight: 120 })
+    expect(placeList(60, 150, 200)).toEqual({ side: 'above', maxHeight: 150 })
+    // A short list that fits stays below, even with more room above.
+    expect(placeList(60, 400, 40)).toEqual({ side: 'below', maxHeight: 60 })
+  })
+
+  it('opens above the box near the bottom of the screen, and below again when the room is there', async () => {
+    const user = userEvent.setup()
+    const app = renderApp()
+    serve(app, () => [title(1, 'Doom'), title(2, 'Doom II')])
+    const box = { top: 600, bottom: 636 }
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(200)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      () => ({ ...box, left: 0, right: 0, width: 0, height: 36 }) as DOMRect,
+    )
+    const height = window.innerHeight
+    window.innerHeight = 700
+
+    try {
+      await user.type(await screen.findByRole('combobox', BOX), 'do')
+      const list = await screen.findByRole('listbox')
+      const dropdown = list.parentElement!
+      expect(dropdown.getAttribute('data-side')).toBe('above')
+      expect(list.style.maxHeight).toBe('240px')
+
+      // The page scrolled: the box is near the top now.
+      box.top = 100
+      box.bottom = 136
+      fireEvent.scroll(window)
+      await waitFor(() =>
+        expect(dropdown.getAttribute('data-side')).toBe('below'),
+      )
+    } finally {
+      window.innerHeight = height
+    }
   })
 })
 

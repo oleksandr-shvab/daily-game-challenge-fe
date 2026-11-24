@@ -192,6 +192,17 @@ describe('the game list in the sidebar (AC-30)', () => {
 })
 
 describe('the account menu (AC-33, AC-66)', () => {
+  it("names the button with all of its visible text, which is the email and not the avatar's initial", async () => {
+    renderApp('/', SIGNED_IN)
+
+    const button = await screen.findByRole('button', {
+      name: `Account: ${USER.email}`,
+    })
+    // WCAG 2.5.3: text inside the `aria-hidden` avatar still counts as visible text, so it must not be text at all
+    // (axe read "Eemail" and found it was not part of "Account: email").
+    expect(button.textContent).toBe(USER.email)
+  })
+
   it.each([
     ['Enter', '{Enter}'],
     ['Space', ' '],

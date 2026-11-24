@@ -26,8 +26,9 @@ type ArchiveRowProps = {
   today?: boolean
 }
 
-// A link to the puzzle's day: the same screen, no full reload, and a new tab works (AC-83). The link's name is spelled
-// out so the state is not read twice, once from the text and once from the boxes.
+// A link to the puzzle's day: the same screen, no full reload, and a new tab works (AC-83). The link has no aria-label:
+// its name is its visible text, in the order it is drawn (WCAG 2.5.3, label in name). The boxes are decoration for it,
+// so the state is read once, from the text (AC-85).
 export function ArchiveRow({
   slug,
   item,
@@ -39,9 +40,6 @@ export function ArchiveRow({
   const date = formatPuzzleDate(item.date, i18n.language)
   const state = stateText(rowState, t)
   const label = t('games.archive.today')
-  const name = today
-    ? `${number}, ${label}, ${date}, ${state}`
-    : `${number}, ${date}, ${state}`
   const className =
     'flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-md border px-3 py-2 hover:bg-accent max-md:min-h-11'
 
@@ -58,8 +56,9 @@ export function ArchiveRow({
       </span>
       <span className="flex items-center gap-3">
         <span className="text-sm">{state}</span>
-        {/* The same words as the state text (AC-85): the boxes are never the only carrier of the state. */}
-        <span role="img" aria-label={state} className="flex gap-1">
+        {/* Hidden from assistive technology: the state text beside it says the same (AC-85), and a named image here would
+            be read into the link's name a second time. */}
+        <span aria-hidden className="flex gap-1">
           {boxesOf(rowState).map((mark, index) => (
             <span
               key={index}
@@ -81,7 +80,6 @@ export function ArchiveRow({
     <Link
       to="/games/$slug"
       params={{ slug }}
-      aria-label={name}
       data-today=""
       className={className}
     >
@@ -91,7 +89,6 @@ export function ArchiveRow({
     <Link
       to="/games/$slug/$date"
       params={{ slug, date: item.date }}
-      aria-label={name}
       className={className}
     >
       {body}

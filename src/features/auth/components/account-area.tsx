@@ -243,13 +243,14 @@ function AccountMenu({
     if (logout.isPending) event.preventDefault()
   }
 
+  // The initial is drawn by CSS (`data-initial`), not written as text. Text inside an `aria-hidden` element still counts as
+  // visible text for "label in name" (WCAG 2.5.3): it ran into the email as "Eemail" and was not part of "Account: email".
   const avatar = (
     <span
       aria-hidden
-      className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-sm font-medium text-foreground"
-    >
-      {initial}
-    </span>
+      data-initial={initial}
+      className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-sm font-medium text-foreground before:content-[attr(data-initial)]"
+    />
   )
 
   return (

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-This is the frontend of Daily Game Challenge. Auth (register/login/logout) is the first real feature, built on TanStack Router + TanStack Query + Zustand + axios (see Stack below). Unit tests run on Vitest (`npm test`; config in `vitest.config.ts`, files named `*.test.ts` next to the code). CI (`.github/workflows/ci.yml`) runs lint, format check, type check and build, and the tests. Component tests run in jsdom with Testing Library (see Conventions). There are no end-to-end tests yet.
+This is the frontend of Daily Game Challenge. Auth (register/login/logout) is the first real feature, built on TanStack Router + TanStack Query + Zustand + axios (see Stack below). Unit tests run on Vitest (`npm test`; config in `vitest.config.ts`, files named `*.test.ts` next to the code). CI (`.github/workflows/ci.yml`) runs lint, format check, type check and build, and the tests. Component tests run in jsdom with Testing Library (see Conventions). Playwright smoke tests with axe are in `e2e/` and run in their own workflow (`.github/workflows/e2e.yml`, see End-to-end tests).
 
 ## Commands
 
@@ -16,12 +16,24 @@ This is the frontend of Daily Game Challenge. Auth (register/login/logout) is th
 - `npm run preview` — serve the production build locally
 
 - `npm test` — run the Vitest unit tests once (`npm run test:watch` to watch)
+- `npm run e2e` — run the Playwright smoke tests (starts the backend and the dev server itself; see End-to-end tests)
+
+## End-to-end tests
+
+- Five smoke tests in `e2e/*.spec.ts` (guest game, register and login, reset password, language, archive) run on three Chromium projects: `desktop` (1280 px), `phone` (360 px) and `tablet` (768 px). Only Chromium, by decision 78. Playwright and axe have no project skill; read their docs at the installed version.
+- `playwright.config.ts` starts both servers (`reuseExistingServer: false`): the backend through `e2e/start-backend.sh` (migrate, seed with `scripts/seed_dev.py`, uvicorn on 8000) and `npm run dev` on 5173. Ports 8000 and 5173 must be free. The backend comes from `../my-list-be` (`BACKEND_DIR` overrides it) and needs `uv sync` once. Its settings are the dummy values in `e2e/support/backend-env.ts`, never a `.env`.
+- Its own database `daily_game_challenge_e2e` and Redis db 2. Defaults are the backend compose file's ports (Postgres 5433, Redis 6379), which CI uses too. A laptop with other ports sets `E2E_DATABASE_URL` (for example `postgresql+asyncpg://postgres:postgres@localhost:5544/daily_game_challenge_e2e`) and `E2E_REDIS_URL` (`redis://localhost:6390/2`). Create the database once with `createdb`. Never point them at the content database.
+- The seed runs on every start, so "today" in the data is the server's today. Tests never hard-code a date or today's answer. The guest test guesses "Elden Ring", the answer of the undated seed draft, so the guess is wrong on any day.
+- The reset password link is read from the backend's log, `.e2e/backend.log` (`e2e/support/reset-link.ts`). The backend keeps that line in a test.
+- `checkA11y(page, name)` (`e2e/support/axe.ts`) runs axe (WCAG 2.2 AA) at nine states on every project, and any violation fails the test. Violations that exist today are listed in `e2e/support/axe-allowlist.ts` with a reason, by rule and `name`. Never switch a rule off for every page or exclude a region. A fix deletes its entry.
+- No fixed sleeps: use web-first assertions, `expect.poll` and `waitForURL`. `eslint-plugin-playwright` enforces it for `e2e/`. CI retries once; a test that passes only on the retry is flaky and gets fixed within a week or deleted.
+- The suite is meant to move to the platform repo once it has a GitHub remote (decision 78). `e2e/`, `playwright.config.ts` and `e2e.yml` are self-contained for that.
 
 ## Architecture
 
 - Entry point [src/main.tsx](src/main.tsx) builds the `QueryClient` ([src/lib/query-client.ts](src/lib/query-client.ts)) and the router ([src/router.ts](src/router.ts)), installs the session guard, then mounts `RouterProvider` (wrapped in `QueryClientProvider`) into `#root` in [index.html](index.html). Both are factory functions, so tests can build their own. There is no top-level `App.tsx` — routes under `src/routes/` own what renders.
 - Static assets served as-is live in [public/](public/) (today only the favicon).
-- TypeScript project uses solution-style config: [tsconfig.json](tsconfig.json) references [tsconfig.app.json](tsconfig.app.json) (app source, `src/`) and [tsconfig.node.json](tsconfig.node.json) (Vite config itself). `tsc -b` builds both as part of `npm run build`.
+- TypeScript project uses solution-style config: [tsconfig.json](tsconfig.json) references [tsconfig.app.json](tsconfig.app.json) (app source, `src/`) and [tsconfig.node.json](tsconfig.node.json) (Vite config itself) and [tsconfig.e2e.json](tsconfig.e2e.json) (`e2e/` and the Playwright config). `tsc -b` builds all three as part of `npm run build`.
 - ESLint config ([eslint.config.js](eslint.config.js)) is flat-config style, composing `@eslint/js`, `typescript-eslint`, `eslint-plugin-react-hooks`, and `eslint-plugin-react-refresh`. It currently uses non-type-aware TS linting (`tseslint.configs.recommended`), not the stricter type-checked variants.
 
 ## This repo

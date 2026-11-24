@@ -1,0 +1,90 @@
+name: E2E
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Catches a backend `main` that broke a journey while no frontend PR was open.
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      backend_ref:
+        description: Backend branch, tag or commit to run against
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+  PYTHON_VERSION: '3.12'
+  UV_VERSION: '0.13.6'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: my-list-fe
+    services:
+      # Postgres is on 5433 so the committed e2e settings (e2e/support/backend-env.ts) work here and
+      # on a laptop with the backend's compose file.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: daily_game_challenge_e2e
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      # Actions are pinned to commit SHAs; the trailing comment names the version.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: my-list-fe
+      # The backend is public. It sits next to the frontend, so ../my-list-be works as on a laptop.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: oleksandr-shvab/my-list-be
+          ref: ${{ inputs.backend_ref || 'main' }}
+          path: my-list-be
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: my-list-be/uv.lock
+      - name: Install the backend (runtime only)
+        working-directory: my-list-be
+        run: uv sync --locked --no-default-groups
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: my-list-fe/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - name: Upload the report, traces and backend log
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-failure
+          path: |
+            my-list-fe/playwright-report/
+            my-list-fe/test-results/
+            my-list-fe/.e2e/backend.log
+          retention-days: 7

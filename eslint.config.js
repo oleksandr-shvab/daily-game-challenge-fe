@@ -2,11 +2,17 @@ import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import playwright from 'eslint-plugin-playwright'
 import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'src/api/generated']),
+  globalIgnores([
+    'dist',
+    'src/api/generated',
+    'test-results',
+    'playwright-report',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -37,5 +43,10 @@ export default defineConfig([
     // Vendored shadcn files export helpers such as buttonVariants and useSidebar.
     files: ['src/components/ui/**'],
     rules: { 'react-refresh/only-export-components': 'off' },
+  },
+  {
+    files: ['e2e/**', 'playwright.config.ts'],
+    extends: [playwright.configs['flat/recommended']],
+    languageOptions: { globals: globals.node },
   },
 ])

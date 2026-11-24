@@ -13,4 +13,13 @@ export const backendEnv: Record<string, string> = {
   MEDIA_STORAGE: 'local',
   MEDIA_LOCAL_DIR: 'var/media',
   MEDIA_LOCAL_BASE_URL: 'http://localhost:5173/api',
+  // The suite registers and logs in from one address, so every rate limit count is raised to 1000.
+  RATE_LIMIT_LOGIN_PER_IP: '1000',
+  RATE_LIMIT_LOGIN_PER_EMAIL: '1000',
+  RATE_LIMIT_REGISTER_PER_IP: '1000',
+  RATE_LIMIT_FORGOT_PER_IP: '1000',
+  RATE_LIMIT_FORGOT_PER_EMAIL: '1000',
+  RATE_LIMIT_GUESS_PER_IP: '1000',
+  RATE_LIMIT_SEARCH_PER_IP: '1000',
+  RATE_LIMIT_PASSWORD_CHANGE: '1000',
 }

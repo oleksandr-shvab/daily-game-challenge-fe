@@ -129,9 +129,8 @@ describe('the archive list for a guest (AC-81, AC-82, AC-85)', () => {
       expect(link.getAttribute('href')).toBe(`/games/${SLUG}/${day}`)
       expect(link.textContent).toContain(number)
       expect(link.textContent).toContain(date)
-      // The visible state and the boxes' name say the same words.
       expect(row.getByText(state).textContent).toBe(state)
-      expect(row.getByRole('img').getAttribute('aria-label')).toBe(state)
+      expectNameIsVisibleText(link)
     })
   })
 })
@@ -192,11 +191,23 @@ describe('"Show more" (AC-80, AC-89)', () => {
   })
 })
 
-// The row's six boxes are `role="img"` with the state text as name; the icons in them mark the win and the losses.
+// A row link's accessible name is its visible text, with no aria-label of its own (WCAG 2.5.3, label in name). It also
+// holds the state once: the six boxes are hidden from assistive technology, so they add nothing to the name. The name
+// is looked up by the link's whole text, which fails when the name differs from it in any way.
+function expectNameIsVisibleText(link: HTMLElement) {
+  expect(link.hasAttribute('aria-label')).toBe(false)
+  expect(screen.getByRole('link', { name: link.textContent ?? '' })).toBe(link)
+}
+
+// The row's six boxes follow the state text and are `aria-hidden`; the icons in them mark the win and the losses.
 function boxesOf(row: ReturnType<typeof within>) {
-  const boxes = row.getByRole('img')
+  const stateText = row.getByText(
+    /^(Solved in \d|Not solved|In progress|Not played)$/,
+  )
+  const boxes = stateText.nextElementSibling as HTMLElement
+  expect(boxes.getAttribute('aria-hidden')).toBe('true')
   return {
-    name: boxes.getAttribute('aria-label'),
+    name: stateText.textContent,
     count: boxes.children.length,
     icons: boxes.querySelectorAll('svg').length,
   }
@@ -639,22 +650,17 @@ describe("today's row", () => {
     expect(rows).toHaveLength(2)
     const link = within(rows[0]).getByRole('link')
     expect(link.getAttribute('href')).toBe(`/games/${SLUG}`)
-    expect(link.getAttribute('aria-label')).toBe(
-      '#308, Today, November 5, 2026, In progress',
-    )
-    expect(link.textContent).toContain('Today')
-    expect(within(rows[0]).getByRole('img').getAttribute('aria-label')).toBe(
-      'In progress',
-    )
+    expectNameIsVisibleText(link)
+    expect(link.textContent).toBe('#308TodayNovember 5, 2026In progress')
     expect(within(rows[1]).getByRole('link').getAttribute('href')).toBe(
       `/games/${SLUG}/2026-11-04`,
     )
     expect(within(rows[1]).queryByText('Today')).toBeNull()
 
     await act(() => i18n.changeLanguage('ru'))
-    expect(within(rows[0]).getByRole('link').getAttribute('aria-label')).toBe(
-      '#308, Сегодня, 5 ноября 2026 г., В процессе',
-    )
+    const russian = within(rows[0]).getByRole('link')
+    expectNameIsVisibleText(russian)
+    expect(russian.textContent).toBe('#308Сегодня5 ноября 2026 г.В процессе')
   })
 
   it('is the only row, and the "no past puzzles" text stays away, when there are no past days; a guest record is read all the same', async () => {
@@ -691,9 +697,8 @@ describe("today's row", () => {
     })
 
     const link = await screen.findByRole('link', { name: /Today/ })
-    expect(link.getAttribute('aria-label')).toBe(
-      '#308, Today, November 5, 2026, Not played',
-    )
+    expectNameIsVisibleText(link)
+    expect(link.textContent).toBe('#308TodayNovember 5, 2026Not played')
 
     // Played: the next visit asks again and shows the win.
     cleanup()
@@ -711,10 +716,8 @@ describe("today's row", () => {
       </QueryClientProvider>,
     )
     expect(
-      (await screen.findByRole('link', { name: /Today/ })).getAttribute(
-        'aria-label',
-      ),
-    ).toBe('#308, Today, November 5, 2026, Solved in 3')
+      (await screen.findByRole('link', { name: /Today/ })).textContent,
+    ).toBe('#308TodayNovember 5, 2026Solved in 3')
   })
 
   it.each([
@@ -788,7 +791,7 @@ describe("today's row", () => {
     await user.click(await screen.findByRole('button', { name: 'Show more' }))
 
     const newRow = await screen.findByRole('link', {
-      name: /^#305, November 1/,
+      name: /^#305November 1/,
     })
     expect(document.activeElement).toBe(newRow)
   })
@@ -809,13 +812,12 @@ describe('the date of a row (AC-83)', () => {
     })
 
     const link = await screen.findByRole('link', { name: /^#310/ })
-    expect(link.getAttribute('aria-label')).toBe(
-      '#310, November 3, 2026, Not played',
-    )
+    expectNameIsVisibleText(link)
+    expect(link.textContent).toBe('#310November 3, 2026Not played')
 
     await act(() => i18n.changeLanguage('ru'))
-    expect(
-      screen.getByRole('link', { name: /^#310/ }).getAttribute('aria-label'),
-    ).toBe('#310, 3 ноября 2026 г., Не сыграно')
+    const russian = screen.getByRole('link', { name: /^#310/ })
+    expectNameIsVisibleText(russian)
+    expect(russian.textContent).toBe('#3103 ноября 2026 г.Не сыграно')
   })
 })

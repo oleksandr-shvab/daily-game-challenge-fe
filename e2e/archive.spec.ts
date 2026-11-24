@@ -15,6 +15,10 @@ test('open a past puzzle from the archive', async ({ page }) => {
   const today = rows.first().getByRole('link')
   await expect(today).toHaveAttribute('data-today', '')
   await expect(today).toContainText('Today')
+  // No aria-label: the name is the visible text in its order, number first (label in name).
+  await expect(today).toHaveAccessibleName(
+    /^#\d+ Today \S.* (Not played|In progress|Solved in \d|Not solved)$/,
+  )
   await expect(today).toHaveAttribute('href', '/games/game-guesser')
   await expect.poll(() => rows.count()).toBeGreaterThanOrEqual(4)
   await checkA11y(page, 'archive')

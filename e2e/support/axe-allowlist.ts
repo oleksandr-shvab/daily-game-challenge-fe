@@ -8,18 +8,4 @@ export type AllowedViolation = {
   reason: string
 }
 
-export const AXE_ALLOWLIST: AllowedViolation[] = [
-  {
-    rule: 'label-content-name-mismatch',
-    page: 'archive',
-    reason:
-      'Each row link has an aria-label ("#4, Today, <date>, <state>") that does not contain all of its visible text (WCAG 2.5.3, label in name). Seen on the Today row and the past rows.',
-  },
-  {
-    rule: 'label-content-name-mismatch',
-    page: 'game-signed-in',
-    projects: ['desktop', 'tablet'],
-    reason:
-      'The sidebar account button is named "Account: <email>" but its visible text is the avatar initial and the email (WCAG 2.5.3). The phone header button has no visible text, so it passes.',
-  },
-]
+export const AXE_ALLOWLIST: AllowedViolation[] = []

@@ -49,6 +49,14 @@ npm run e2e
 
 The tests use the database `daily_game_challenge_e2e` and Redis db 2. If your Postgres or Redis is on other ports, set `E2E_DATABASE_URL` and `E2E_REDIS_URL`, for example `E2E_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5544/daily_game_challenge_e2e E2E_REDIS_URL=redis://localhost:6390/2 npm run e2e`. The backend log is in `.e2e/backend.log`, the report in `playwright-report/`.
 
+## Production image
+
+```sh
+docker build -t dgc-web:ci .
+```
+
+The image is Caddy with the built app inside. `deploy/Caddyfile` sets the security headers, the CSP, caching and the `/api` proxy. It needs `SITE_ADDRESS` at run time. Compose for the whole stack lives in the platform repo.
+
 ## Regenerate the API client
 
 ```sh

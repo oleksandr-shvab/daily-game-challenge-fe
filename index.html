@@ -5,20 +5,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Daily Game Challenge</title>
-    <script>
-      ;(function () {
-        // Blocked storage must not stop the page: fall back to the system theme.
-        var stored = null
-        try {
-          stored = localStorage.getItem('theme')
-        } catch (e) {}
-        var dark =
-          stored === 'dark' ||
-          (stored !== 'light' &&
-            window.matchMedia('(prefers-color-scheme: dark)').matches)
-        document.documentElement.classList.toggle('dark', dark)
-      })()
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

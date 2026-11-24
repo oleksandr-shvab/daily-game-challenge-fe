@@ -1,10 +1,20 @@
 # Production edge: this file owns every response header and the CSP. The backend adds none.
-# Settings come from the environment (substituted before parsing, an unset SITE_ADDRESS is an error):
-#   SITE_ADDRESS      the site's host name, for example dgc.localhost or the real domain
+# Settings come from the environment, substituted before parsing:
+#   SITE_ADDRESS      the site's host name, for example dgc.localhost or the real domain. Required.
+#                     Compose must refuse an empty value (${SITE_ADDRESS:?}). Caddy itself only fails
+#                     by accident when it is empty: the site block loses its address and the parse
+#                     error says "server block without any key".
 #   ACME_EMAIL        contact for the certificate authority, may be empty
 #   MEDIA_ORIGIN      the object-storage origin for clue media, empty with local storage
 #   BACKEND_UPSTREAM  optional, defaults to backend:8000
 # The admin API stays on its default loopback address: the container health check uses it.
+{
+	# Global option, not `tls <email>` in the site block: that one makes the ACME issuers explicit
+	# and a .localhost name would stop using Caddy's internal CA. The quotes keep an empty value
+	# a valid (empty) argument.
+	email "{$ACME_EMAIL}"
+}
+
 (security_headers) {
 	# style-src needs 'unsafe-inline' because two libraries inject a <style> element at run time,
 	# checked in Chromium against the built app (CSP 'self' only blocked both):
@@ -26,11 +36,12 @@
 		>Cross-Origin-Opener-Policy "same-origin"
 		>Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 		-Server
+		-Via
 	}
 }
 
 {$SITE_ADDRESS} {
-	tls {$ACME_EMAIL} {
+	tls {
 		protocols tls1.2 tls1.3
 	}
 

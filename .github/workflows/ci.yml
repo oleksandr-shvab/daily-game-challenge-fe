@@ -84,7 +84,9 @@ jobs:
       - run: docker build -t dgc-web:ci .
       - name: Image checks
         run: |
-          test "$(docker run --rm --entrypoint id dgc-web:ci -u)" != 0
+          # In its own line: bash -e ignores a failing $(...) inside a test argument.
+          uid=$(docker run --rm --entrypoint id dgc-web:ci -u)
+          test "$uid" = 10001
           id=$(docker create dgc-web:ci)
           docker cp "$id:/srv/index.html" index.html
           docker rm "$id"

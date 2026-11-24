@@ -73,3 +73,23 @@ jobs:
             echo "src/api/generated differs from the backend contract: run npm run api:generate and commit"
             exit 1
           fi
+
+  # The production image is Caddy with the built app. The build runs `caddy validate` on
+  # deploy/Caddyfile. Nothing is pushed.
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker build -t dgc-web:ci .
+      - name: Image checks
+        run: |
+          test "$(docker run --rm --entrypoint id dgc-web:ci -u)" != 0
+          id=$(docker create dgc-web:ci)
+          docker cp "$id:/srv/index.html" index.html
+          docker rm "$id"
+          # A <script> tag without src is an inline script, which the CSP blocks.
+          if grep -E '<script' index.html | grep -v 'src='; then
+            echo "index.html has an inline script"
+            exit 1
+          fi

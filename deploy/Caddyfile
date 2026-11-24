@@ -1,0 +1,85 @@
+# Production edge: this file owns every response header and the CSP. The backend adds none.
+# Settings come from the environment (substituted before parsing, an unset SITE_ADDRESS is an error):
+#   SITE_ADDRESS      the site's host name, for example dgc.localhost or the real domain
+#   ACME_EMAIL        contact for the certificate authority, may be empty
+#   MEDIA_ORIGIN      the object-storage origin for clue media, empty with local storage
+#   BACKEND_UPSTREAM  optional, defaults to backend:8000
+# The admin API stays on its default loopback address: the container health check uses it.
+(security_headers) {
+	# style-src needs 'unsafe-inline' because two libraries inject a <style> element at run time,
+	# checked in Chromium against the built app (CSP 'self' only blocked both):
+	#   - sonner (the toasts) writes its whole stylesheet into <head> when the page loads;
+	#   - react-style-singleton, used by react-remove-scroll-bar under Radix's Dialog, Sheet and
+	#     dropdown, writes the scroll-lock style when one of them opens.
+	# Neither can take a nonce from a static file, and a hash would change with every version bump.
+	# Scripts stay on 'self' only, which is where the protection that matters is.
+	# Deferred (>), so a header the backend also sends is replaced, not repeated.
+	header {
+		>Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: {$MEDIA_ORIGIN}; media-src 'self' {$MEDIA_ORIGIN}; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# No includeSubDomains or preload yet: both are hard to undo for a domain not bought yet.
+		>Strict-Transport-Security "max-age=31536000"
+		>X-Content-Type-Options "nosniff"
+		# Never no-referrer: the browser would then send Origin: null on same-origin POSTs, and the
+		# backend's CSRF check refuses them.
+		>Referrer-Policy "strict-origin-when-cross-origin"
+		>X-Frame-Options "DENY"
+		>Cross-Origin-Opener-Policy "same-origin"
+		>Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		-Server
+	}
+}
+
+{$SITE_ADDRESS} {
+	tls {$ACME_EMAIL} {
+		protocols tls1.2 tls1.3
+	}
+
+	import security_headers
+
+	# Caddy's own error responses (404, 413, 502) skip the chain above, so they get the headers here.
+	handle_errors {
+		import security_headers
+	}
+
+	handle_path /api/* {
+		# The bare health paths must not be reachable from outside. This runs after /api is
+		# stripped, so it matches what the backend would see.
+		@health path /healthz* /readyz*
+		respond @health 404
+
+		request_body {
+			max_size 1MB
+		}
+
+		# Set only when the backend sent none: the explicit values pass unchanged.
+		header ?Cache-Control "no-store"
+
+		# No encode here, so a media Range answer reaches the browser byte for byte.
+		reverse_proxy {$BACKEND_UPSTREAM:backend:8000} {
+			header_up X-Request-ID {http.request.uuid}
+			header_down -Server
+		}
+	}
+
+	handle {
+		root * /srv
+		encode zstd gzip
+
+		# A missing asset must be a real 404, never index.html: an old tab then sees the failed
+		# chunk (vite:preloadError) and reloads, and never gets HTML served as JavaScript.
+		handle /assets/* {
+			header {
+				Cache-Control "public, max-age=31536000, immutable"
+				match status 2xx 304
+			}
+			file_server
+		}
+
+		# index.html, theme-init.js, the favicon and any SPA route.
+		handle {
+			header Cache-Control "no-cache"
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}

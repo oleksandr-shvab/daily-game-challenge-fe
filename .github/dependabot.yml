@@ -1,0 +1,22 @@
+# Schema: https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # One pull request for the minor and patch updates; each major arrives alone.
+      npm-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  # Keeps the SHA pins in .github/workflows/*.yml current (it updates the version comment too).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]

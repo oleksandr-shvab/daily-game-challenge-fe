@@ -2,7 +2,7 @@
 
 The web app of Daily Game Challenge, a site of daily puzzle games. It is a single-page app built with Vite, React and TypeScript.
 
-The backend is the `my-list-be` repo (FastAPI). The contract between the two is `CONTRACTS.md` in the folder that holds both repos.
+The backend is [daily-game-challenge-be](https://github.com/oleksandr-shvab/daily-game-challenge-be) (FastAPI). The overview, architecture, API contract (`CONTRACTS.md`) and production setup are in the umbrella repo [daily-game-challenge](https://github.com/oleksandr-shvab/daily-game-challenge). Locally the three sit together, this one checked out as `my-list-fe/` and the backend as `my-list-be/` inside the umbrella repo; the commands below use those paths.
 
 ## Install
 

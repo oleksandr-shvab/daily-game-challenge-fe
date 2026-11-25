@@ -38,7 +38,7 @@ This is the frontend of Daily Game Challenge. Auth (register/login/logout) is th
 
 ## This repo
 
-Frontend only. It talks to the FastAPI backend in the `my-list-be` repo, on `http://localhost:8000` in dev.
+Frontend only. It talks to the FastAPI backend in the `my-list-be` repo, on `http://localhost:8000` in dev. On GitHub the repos are `oleksandr-shvab/daily-game-challenge-fe` (this one), `daily-game-challenge-be` and the umbrella `daily-game-challenge`; locally they keep the folder names `my-list-fe/` and `my-list-be/`, which scripts, CI paths and the e2e setup rely on.
 The app calls `/api/v1/...`; Vite's dev proxy (`vite.config.ts`) strips `/api` and forwards `/v1/...` to the backend.
 Open the app at `http://localhost:5173`, not `127.0.0.1`, because the session cookie is host-scoped.
 The dev proxy keeps the browser's `Origin`; do not rewrite it. `127.0.0.1:5173` and the preview server on `4173` are not allowed origins, so their POSTs get 403.

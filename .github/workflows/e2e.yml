@@ -58,7 +58,7 @@ jobs:
       # The backend is public. It sits next to the frontend, so ../my-list-be works as on a laptop.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: oleksandr-shvab/my-list-be
+          repository: oleksandr-shvab/daily-game-challenge-be
           ref: ${{ inputs.backend_ref || 'main' }}
           path: my-list-be
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2

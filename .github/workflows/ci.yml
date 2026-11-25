@@ -64,7 +64,7 @@ jobs:
       - run: npm ci
       - name: Regenerate from the backend's OpenAPI snapshot on main
         env:
-          API_SPEC: https://raw.githubusercontent.com/oleksandr-shvab/my-list-be/main/openapi/openapi.json
+          API_SPEC: https://raw.githubusercontent.com/oleksandr-shvab/daily-game-challenge-be/main/openapi/openapi.json
         run: npm run api:generate
       - name: Generated code is up to date
         run: |
